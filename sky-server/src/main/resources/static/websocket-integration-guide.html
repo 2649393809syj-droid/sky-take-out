@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>WebSocket 集成指南</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        h1 { color: #333; }
+        h2 { color: #666; margin-top: 30px; }
+        pre {
+            background-color: #f4f4f4;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 15px;
+            overflow-x: auto;
+        }
+        code {
+            background-color: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+        .note {
+            background-color: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .success {
+            background-color: #d4edda;
+            border-left: 4px solid #28a745;
+            padding: 15px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>WebSocket 前端集成指南</h1>
+    
+    <div class="success">
+        <strong>✓ 后端已配置完成</strong><br>
+        WebSocket 服务地址：<code>ws://localhost:8080/ws/admin</code><br>
+        音频文件已准备：<code>/audio/preview.mp3</code> 和 <code>/audio/reminder.mp3</code>
+    </div>
+
+    <h2>步骤1：找到你的前端项目</h2>
+    <p>根据你使用的前端框架，找到对应的文件：</p>
+    <ul>
+        <li><strong>Vue 项目：</strong> <code>src/main.js</code> 或 <code>src/App.vue</code></li>
+        <li><strong>React 项目：</strong> <code>src/App.js</code> 或 <code>src/index.js</code></li>
+        <li><strong>普通 HTML：</strong> 主页面的 HTML 文件</li>
+    </ul>
+
+    <h2>步骤2：添加 WebSocket 连接代码</h2>
+    
+    <h3>方案A：Vue 项目（推荐）</h3>
+    <p>在 <code>src/main.js</code> 中添加：</p>
+    <pre><code>import Vue from 'vue'
+import ElementUI from 'element-ui'
+
+Vue.use(ElementUI)
+
+// WebSocket 全局配置
+Vue.prototype.$websocket = null
+
+Vue.prototype.$connectWebSocket = function() {
+    if (this.$websocket && this.$websocket.readyState === WebSocket.OPEN) {
+        return
+    }
+    
+    // 动态获取 WebSocket 地址
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const wsHost = window.location.host
+    const wsUrl = `${wsProtocol}//${wsHost}/ws/admin`
+    
+    this.$websocket = new WebSocket(wsUrl)
+    
+    this.$websocket.onopen = () => {
+        console.log("WebSocket连接成功")
+    }
+    
+    this.$websocket.onmessage = (event) => {
+        console.log("收到消息：", event.data)
+        const data = JSON.parse(event.data)
+        
+        if (data.type === 1) {
+            // 新订单通知
+            this.$notify({
+                title: '新订单提醒',
+                message: data.content,
+                type: 'success',
+                duration: 0,
+                position: 'top-right'
+            })
+            
+            // 播放提示音
+            const audio = new Audio('/audio/preview.mp3')
+            audio.play()
+            
+            // 语音播报
+            if ('speechSynthesis' in window) {
+                const utterance = new SpeechSynthesisUtterance("您有新的订单，请及时处理")
+                utterance.lang = 'zh-CN'
+                window.speechSynthesis.speak(utterance)
+            }
+        } else if (data.type === 2) {
+            // 客户催单
+            this.$notify({
+                title: '客户催单',
+                message: data.content,
+                type: 'warning',
+                duration: 0,
+                position: 'top-right'
+            })
+            
+            const audio = new Audio('/audio/reminder.mp3')
+            audio.play()
+        }
+    }
+    
+    this.$websocket.onclose = () => {
+        console.log("WebSocket连接关闭，5秒后重连")
+        setTimeout(() => this.$connectWebSocket(), 5000)
+    }
+    
+    this.$websocket.onerror = (error) => {
+        console.error("WebSocket错误", error)
+    }
+}
+
+// 在 Vue 实例创建时连接
+new Vue({
+    router,
+    store,
+    render: h => h(App),
+    mounted() {
+        // 连接 WebSocket
+        this.$connectWebSocket()
+        
+        // 请求通知权限
+        if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission()
+        }
+    }
+}).$mount('#app')</code></pre>
+
+    <h3>方案B：在任意页面中使用（通用方案）</h3>
+    <p>在你的主页面 HTML 的 <code>&lt;script&gt;</code> 标签中添加：</p>
+    <pre><code>&lt;script&gt;
+// 全局 WebSocket 对象
+let websocket = null;
+
+// 连接 WebSocket
+function connectWebSocket() {
+    if (websocket && websocket.readyState === WebSocket.OPEN) {
+        return;
+    }
+    
+    // 动态获取 WebSocket 地址
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsHost = window.location.host;
+    const wsUrl = `${wsProtocol}//${wsHost}/ws/admin`;
+    
+    websocket = new WebSocket(wsUrl);
+    
+    websocket.onopen = function() {
+        console.log("WebSocket连接成功");
+    };
+    
+    websocket.onmessage = function(event) {
+        console.log("收到消息：", event.data);
+        
+        try {
+            const data = JSON.parse(event.data);
+            
+            if (data.type === 1) {
+                // 新订单通知
+                showNotification('新订单提醒', data.content);
+                playSound('/audio/preview.mp3');
+                playVoice('您有新的订单，请及时处理');
+            } else if (data.type === 2) {
+                // 客户催单
+                showNotification('客户催单', data.content);
+                playSound('/audio/reminder.mp3');
+                playVoice('有客户催单，请尽快处理');
+            }
+        } catch (e) {
+            console.error("解析消息失败", e);
+        }
+    };
+    
+    websocket.onclose = function() {
+        console.log("WebSocket连接关闭，5秒后重连");
+        setTimeout(connectWebSocket, 5000);
+    };
+    
+    websocket.onerror = function(error) {
+        console.error("WebSocket错误", error);
+    };
+}
+
+// 显示通知（使用 Element UI）
+function showNotification(title, message) {
+    if (typeof ElementUI !== 'undefined') {
+        ElementUI.Notification({
+            title: title,
+            message: message,
+            type: title.includes('催单') ? 'warning' : 'success',
+            duration: 0,
+            position: 'top-right'
+        });
+    } else {
+        // 使用浏览器原生通知
+        if (Notification.permission === "granted") {
+            new Notification(title, { body: message });
+        }
+    }
+}
+
+// 播放提示音
+function playSound(audioUrl) {
+    const audio = new Audio(audioUrl);
+    audio.play().catch(e => console.log('播放提示音失败', e));
+}
+
+// 语音播报
+function playVoice(text) {
+    if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'zh-CN';
+        utterance.rate = 1.0;
+        utterance.pitch = 1.0;
+        window.speechSynthesis.speak(utterance);
+    }
+}
+
+// 页面加载时初始化
+window.addEventListener('load', function() {
+    // 请求通知权限
+    if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission();
+    }
+    
+    // 连接 WebSocket
+    connectWebSocket();
+});
+
+// 页面卸载时关闭连接
+window.addEventListener('beforeunload', function() {
+    if (websocket) {
+        websocket.close();
+    }
+});
+&lt;/script&gt;</code></pre>
+
+    <h2>步骤3：测试</h2>
+    <div class="note">
+        <strong>测试步骤：</strong>
+        <ol>
+            <li>打开你的商家管理后台页面</li>
+            <li>打开浏览器控制台，查看是否有 "WebSocket连接成功" 的日志</li>
+            <li>在用户端下单并支付</li>
+            <li>应该会看到弹窗通知、听到提示音和语音播报</li>
+        </ol>
+    </div>
+
+    <h2>常见问题</h2>
+    <h3>Q: 找不到前端项目在哪里？</h3>
+    <p>A: 你的前端项目应该是一个独立的文件夹，通常名为 <code>sky-admin</code>、<code>admin-web</code> 或类似的名字。如果你是从课程资料中获取的，检查一下是否有单独的前端压缩包。</p>
+
+    <h3>Q: 如何知道我用的是什么前端框架？</h3>
+    <p>A: 查看前端项目的 <code>package.json</code> 文件，在 <code>dependencies</code> 中可以看到：</p>
+    <ul>
+        <li>如果有 <code>"vue"</code>，就是 Vue 项目</li>
+        <li>如果有 <code>"react"</code>，就是 React 项目</li>
+        <li>如果有 <code>"element-ui"</code>，说明使用了 Element UI 组件库</li>
+    </ul>
+
+    <h3>Q: 代码应该加在文件的什么位置？</h3>
+    <p>A: </p>
+    <ul>
+        <li><strong>Vue 项目：</strong>在 <code>main.js</code> 的最后，<code>new Vue({...}).$mount('#app')</code> 这部分</li>
+        <li><strong>HTML 文件：</strong>在 <code>&lt;/body&gt;</code> 标签之前添加 <code>&lt;script&gt;</code> 标签</li>
+    </ul>
+
+    <h2>需要帮助？</h2>
+    <p>如果你能提供以下信息，我可以给出更具体的指导：</p>
+    <ul>
+        <li>前端项目的文件夹名称</li>
+        <li>前端项目的目录结构截图</li>
+        <li><code>package.json</code> 文件的内容</li>
+    </ul>
+
+    <div class="success">
+        <strong>提示：</strong>如果你的前端项目和后端在同一个工作区，可以在 VS Code 中按 <code>Ctrl+P</code>（Mac: <code>Cmd+P</code>），然后输入 <code>main.js</code> 或 <code>App.vue</code> 来快速找到文件。
+    </div>
+</body>
+</html>

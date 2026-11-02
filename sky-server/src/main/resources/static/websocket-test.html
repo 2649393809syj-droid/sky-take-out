@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>WebSocket测试页面</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .connected {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        #messages {
+            border: 1px solid #ddd;
+            padding: 10px;
+            height: 300px;
+            overflow-y: auto;
+            margin: 20px 0;
+        }
+        .message {
+            padding: 5px;
+            margin: 5px 0;
+            background-color: #f0f0f0;
+            border-radius: 3px;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h1>WebSocket 测试页面</h1>
+    
+    <div id="status" class="status disconnected">未连接</div>
+    
+    <button onclick="connect()">连接WebSocket</button>
+    <button onclick="disconnect()">断开连接</button>
+    <button onclick="testPayment()">模拟支付成功</button>
+    <button onclick="testVoice()">测试语音播报</button>
+    
+    <h3>接收到的消息：</h3>
+    <div id="messages"></div>
+    
+    <script>
+        let websocket = null;
+        
+        function connect() {
+            if (websocket != null) {
+                addMessage("WebSocket已连接");
+                return;
+            }
+            
+            // 连接WebSocket，sid可以是任意标识
+            websocket = new WebSocket("ws://localhost:8080/ws/admin");
+            
+            websocket.onopen = function() {
+                updateStatus(true);
+                addMessage("WebSocket连接成功");
+            };
+            
+            websocket.onmessage = function(event) {
+                addMessage("收到消息: " + event.data);
+                
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 1) {
+                        // 来单提醒
+                        playVoice("您有新的订单，订单号" + data.content);
+                        showNotification("新订单", data.content);
+                    }
+                } catch (e) {
+                    console.error("解析消息失败", e);
+                }
+            };
+            
+            websocket.onclose = function() {
+                updateStatus(false);
+                addMessage("WebSocket连接关闭");
+                websocket = null;
+            };
+            
+            websocket.onerror = function() {
+                addMessage("WebSocket连接错误");
+            };
+        }
+        
+        function disconnect() {
+            if (websocket != null) {
+                websocket.close();
+            }
+        }
+        
+        function updateStatus(connected) {
+            const statusDiv = document.getElementById("status");
+            if (connected) {
+                statusDiv.className = "status connected";
+                statusDiv.textContent = "已连接";
+            } else {
+                statusDiv.className = "status disconnected";
+                statusDiv.textContent = "未连接";
+            }
+        }
+        
+        function addMessage(msg) {
+            const messagesDiv = document.getElementById("messages");
+            const messageDiv = document.createElement("div");
+            messageDiv.className = "message";
+            messageDiv.textContent = new Date().toLocaleTimeString() + " - " + msg;
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+        
+        function testPayment() {
+            addMessage("提示：请在后端调用支付接口来触发WebSocket消息");
+            addMessage("或者直接访问：http://localhost:8080/user/order/payment");
+        }
+        
+        function testVoice() {
+            playVoice("这是一条测试语音播报");
+        }
+        
+        function playVoice(text) {
+            if ('speechSynthesis' in window) {
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = 'zh-CN';
+                utterance.rate = 1.0;
+                utterance.pitch = 1.0;
+                window.speechSynthesis.speak(utterance);
+                addMessage("播放语音: " + text);
+            } else {
+                addMessage("浏览器不支持语音合成");
+            }
+        }
+        
+        function showNotification(title, body) {
+            if (!("Notification" in window)) {
+                addMessage("浏览器不支持通知");
+                return;
+            }
+            
+            if (Notification.permission === "granted") {
+                new Notification(title, { body: body });
+            } else if (Notification.permission !== "denied") {
+                Notification.requestPermission().then(function(permission) {
+                    if (permission === "granted") {
+                        new Notification(title, { body: body });
+                    }
+                });
+            }
+        }
+        
+        // 页面加载时请求通知权限
+        window.onload = function() {
+            if ("Notification" in window && Notification.permission === "default") {
+                Notification.requestPermission();
+            }
+        };
+    </script>
+</body>
+</html>

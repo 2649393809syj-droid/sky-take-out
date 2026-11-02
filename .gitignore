@@ -1,0 +1,15 @@
+**/target/
+.idea
+.vscode
+*.iml
+*.class
+*Test.java
+**/test/
+uploads/
+*.log
+logs/
+node_modules/
+.env
+.env.*
+*.bat
+insert_today_orders.sql
